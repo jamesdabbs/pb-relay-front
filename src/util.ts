@@ -1,26 +1,51 @@
-// Runs the given function on the leading AND trailing edges
-// of activity, always at least +wait+ apart.
-export function debounce<T>(f: (t: T) => void, wait = 1000) {
-  let timeout: NodeJS.Timeout | null
+import { Readable, get } from 'svelte/store'
 
-  return function debounced(t: T) {
-    if (timeout) {
-      clearTimeout(timeout)
-    } else {
-      f(t)
+type Halt = () => void
+
+export function eachTick<T>(
+  items: T[],
+  handler: (item: T, halt: Halt) => void,
+): Promise<void> {
+  return new Promise(resolve => {
+    let stop = false
+
+    function halt() {
+      stop = true
     }
-    timeout = setTimeout(() => {
-      f(t)
-      timeout = null
-    }, wait)
-  }
+
+    function go(i: number) {
+      const item = items[i]
+      if (stop || !item) {
+        resolve()
+        return
+      }
+
+      handler(item, halt)
+
+      setTimeout(() => go(i + 1), 0)
+    }
+
+    go(0)
+  })
 }
 
-export function replaceEnd(haystack: string, needle: string, replacement: string): string {
-  const n = haystack.lastIndexOf(needle)
-  if (n >= 0) {
-    return haystack.substring(0, n) + replacement
-  } else {
-    return haystack
-  }
+// svelte's get allows for reading from polymorphic store types, but the
+// polymorphism usually requires explicit type annotations. This version
+// restricts types for more ergonomic usage for the common case.
+export function read<T>(readable: Readable<T>): T {
+  return get(readable)
+}
+
+export function subscribeUntil<S>(
+  store: Readable<S>,
+  condition: (state: S) => boolean,
+): Promise<void> {
+  return new Promise(resolve => {
+    const unsubscribe = store.subscribe(state => {
+      if (condition(state)) {
+        resolve()
+        unsubscribe()
+      }
+    })
+  })
 }
